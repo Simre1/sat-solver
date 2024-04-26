@@ -37,8 +37,8 @@ fn main() {
         }
         SATResult::SAT { model } => {
             println!("Formula is SAT");
-            for (var, assignment) in model.assignments {
-                println!("{0}: {1}", var.0, assignment);
+            for (var, assignment) in model.assignments.iter().enumerate() {
+                println!("{0}: {1}", var, assignment);
             }
         }
     }
