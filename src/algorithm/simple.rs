@@ -58,7 +58,7 @@ fn false_clause(clause: &Clause, assignment:  &Vec<Assignment>)->bool{
 }
 
 fn false_assignment(lit: &Lit, assignment: &Vec<Assignment>)->bool{
-    let var_idx = lit.var().0 as usize;
+    let var_idx = (lit.var().0-1) as usize;
     (lit.sign() == Sign::Neg && assignment[var_idx] == Assignment::Top) || 
     (lit.sign() == Sign::Pos && assignment[var_idx] == Assignment::Bot)
 }
