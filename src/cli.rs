@@ -21,6 +21,7 @@ impl Display for AlgorithmType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AlgorithmType::Simple => f.write_str("simple"),
+            AlgorithmType::DPLL => f.write_str("dpll"),
         }
     }
 }
@@ -28,6 +29,7 @@ impl Display for AlgorithmType {
 #[derive(Parser, Debug, Clone)]
 pub enum AlgorithmType {
     Simple,
+    DPLL
 }
 
 impl FromStr for AlgorithmType {
@@ -36,6 +38,7 @@ impl FromStr for AlgorithmType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "simple" => Ok(AlgorithmType::Simple),
+            "dpll" => Ok(AlgorithmType::DPLL),
             _ => Err("Not recognized".to_string() + s + "\nSupported algorithms: \"simple\""),
         }
     }
