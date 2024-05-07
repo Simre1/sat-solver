@@ -59,6 +59,7 @@ impl Clauses {
     }
 }
 
+#[derive(Debug)]
 pub struct Assignments {
     assignments: Vec<Assignment>,
 }
@@ -108,11 +109,10 @@ fn bcp(clauses: &mut Clauses, assignments: &mut Assignments, lit: Lit) -> Option
 
     assignment_stack.push(lit);
 
-    let iterations = 0;
+    let mut iterations = 0;
     while (iterations < assignment_stack.len()) {
         let current_lit = assignment_stack[iterations];
         let i = lit_to_index(current_lit);
-        println!("{}, {:?}", i, current_lit);
         assignments.assignments[i] = assignment_from_sign(current_lit.sign());
         let mut mapping_changes = LinkedList::new();
 
@@ -182,6 +182,7 @@ fn bcp(clauses: &mut Clauses, assignments: &mut Assignments, lit: Lit) -> Option
             clauses.watches_for_var[from].remove(&clauseIndex);
             clauses.watches_for_var[to].insert(clauseIndex);
         }
+        iterations += 1;
     }
     return Some(assignment_stack);
 }
@@ -190,11 +191,12 @@ pub fn dpll_algorithm(num_vars: usize, clauses: Box<[Clause]>) -> SATResult {
     let mut clauses = Clauses::from_dimacs(num_vars, clauses);
     let mut assignments = Assignments::all_unassigned(num_vars);
     let mut assignment_stack: Vec<Vec<usize>> = vec![];
-    let mut unassigned: Vec<usize> = (1..=num_vars).into_iter().collect();
+    let mut unassigned: Vec<usize> = (0..num_vars).into_iter().collect();
 
     loop {
         match unassigned.pop() {
             None => {
+                println!("{:?} {:?}", unassigned, assignments);
                 return SAT {
                     model: Model {
                         assignments: assignments
