@@ -1,8 +1,7 @@
 use crate::algorithm::interface::Assignment::*;
 use crate::algorithm::interface::SATResult::*;
 use dimacs::{Clause, Lit, Sign};
-use std::collections::{BTreeSet, LinkedList};
-
+use std::collections::BTreeSet;
 use super::interface::*;
 
 pub struct WatchedClause {
@@ -11,7 +10,7 @@ pub struct WatchedClause {
 }
 
 pub struct DpllSolver {
-    clause_watchers: Vec<WatchedClause>,
+    clauses: Vec<WatchedClause>,
     watches_for_var: Vec<BTreeSet<usize>>,
     assignment: Vec<Assignment>,
 }
@@ -40,7 +39,7 @@ impl DpllSolver {
         }
 
         DpllSolver {
-            clause_watchers: clauses,
+            clauses,
             watches_for_var,
             assignment,
         }
@@ -54,10 +53,9 @@ impl DpllSolver {
             let current_lit = assigned_lits[iterations];
             let current_lit_idx = lit_to_index(current_lit);
             self.assignment[current_lit_idx] = assignment_from_sign(current_lit.sign());
-            let mut mapping_changes = LinkedList::new();
 
-            for clause_index in self.watches_for_var[current_lit_idx].iter() {
-                let clause_watcher = & self.clause_watchers[*clause_index];
+            for clause_index in self.watches_for_var[current_lit_idx].clone() {
+                let clause_watcher = & self.clauses[clause_index];
 
                 let watched1 = self.truth_value_of_literal(clause_watcher.watched[0]);
                 let watched2 = self.truth_value_of_literal(clause_watcher.watched[1]);
@@ -72,15 +70,16 @@ impl DpllSolver {
                         let bot_watch_idx = if watched1 == Bot { 0 } else { 1 };
                         let other_watch_idx = 1 - bot_watch_idx;
 
-                        let next = self.find_next_watched_literal(
+                        let new_watched_lit = self.find_next_watched_literal(
                             &clause_watcher.clause,
                             clause_watcher.watched[other_watch_idx],
                         );
-                        match next {
-                            Some(lit) => {
-                                let mut_clause_watcher =&mut self.clause_watchers[*clause_index];
-                                mut_clause_watcher.watched[bot_watch_idx] = lit;
-                                mapping_changes.push_front((current_lit_idx, lit_to_index(lit), *clause_index));
+                        match new_watched_lit {
+                            Some(found_lit) => {
+                                let mut_clause_watcher = &mut self.clauses[clause_index];
+                                mut_clause_watcher.watched[bot_watch_idx] = found_lit;
+                                self.watches_for_var[current_lit_idx].remove(&clause_index);
+                                self.watches_for_var[lit_to_index(found_lit)].insert(clause_index);
                             }
                             None => {
                                 assigned_lits.push(clause_watcher.watched[other_watch_idx]);
@@ -89,11 +88,6 @@ impl DpllSolver {
                     }
                     (_, _) => panic!("Should not happen"),
                 }
-            }
-
-            for (from, to, clause_index) in mapping_changes {
-                self.watches_for_var[from].remove(&clause_index);
-                self.watches_for_var[to].insert(clause_index);
             }
             iterations += 1;
         }
@@ -152,6 +146,13 @@ impl DpllSolver {
                 return Some(*lit);
             }
         }
+
+        for lit in clause.lits() {
+            if self.truth_value_of_literal(*lit) == Top {
+                return Some(*lit);
+            }
+        }
+       
         return None;
     }
 }
