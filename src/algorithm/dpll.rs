@@ -54,7 +54,7 @@ impl DpllSolver {
             let current_lit = assigned_lits[iterations];
             let current_lit_idx = lit_to_index(current_lit);
             //if both a aund !a were unit literals
-            if(self.truth_value_of_literal(current_lit) == Bot) {
+            if (self.truth_value_of_literal(current_lit) == Bot) {
                 self.unassign(&assigned_lits);
                 return None;
             }
@@ -149,12 +149,13 @@ impl DpllSolver {
                 loop {
                     let result = self.bcp(next);
 
-                    println!(
-                        "{:?}, {:?}, {:?}, {:?}",
-                        next, &result, &stack, &made_assignments
-                    );
+                    // println!(
+                    //     "{:?}, {:?}, {:?}, {:?}",
+                    //     next, &result, &stack, &made_assignments
+                    // );
                     match result {
-                        Some(implied_assignments) => {
+                        Some(mut implied_assignments) => {
+                            // Current fix to deduplicate bcp output
                             let mut implied_assignments2 = implied_assignments
                                 .into_iter()
                                 .collect::<HashSet<Lit>>()
@@ -164,9 +165,6 @@ impl DpllSolver {
 
                             formula_top = made_assignments.len() == self.assignment.len();
 
-                            if formula_top {
-                                println!("{:?}", &made_assignments);
-                            }
                             formula_bottom = false;
                         }
                         None => {
@@ -200,35 +198,6 @@ impl DpllSolver {
                 }
             }
         }
-
-        // loop {
-        //     match next {
-        //         None => {
-        //             return SAT {
-        //                 model: Model {
-        //                     assignments: self.assignment.iter().map(|x| x.to_bool()).collect(),
-        //                 },
-        //             };
-        //         }
-        //         Some(next_lit) => {
-        //             match self.bcp(next_lit) {
-        //                 Some(assigned) => {
-        //                     assignments.push((assigned, negate(next_lit)));
-        //                     next = self.next_unassigned_lit();
-        //                 }
-        //                 None => match stack.pop() {
-        //                     Some((assigned, negated_lit)) => {
-        //                         self.unassign(&assigned);
-        //                         next = Some(negated_lit);
-        //                     }
-        //                     None => {
-        //                         return UNSAT;
-        //                     }
-        //                 },
-        //             };
-        //         }
-        //     }
-        // }
     }
 
     fn next_unassigned_lit(&self) -> Option<Lit> {
