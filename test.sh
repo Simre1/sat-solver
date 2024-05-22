@@ -1,3 +1,3 @@
 #!/bin/sh
 
-cargo run -- --cnf test-files/test1.cnf
+cargo run -- -a dpll --cnf test-files/test4.cnf

@@ -53,6 +53,11 @@ impl DpllSolver {
         while iterations < assigned_lits.len() {
             let current_lit = assigned_lits[iterations];
             let current_lit_idx = lit_to_index(current_lit);
+            //if both a aund !a were unit literals
+            if(self.truth_value_of_literal(current_lit) == Bot) {
+                self.unassign(&assigned_lits);
+                return None;
+            }
             self.assignment[current_lit_idx] = assignment_from_sign(current_lit.sign());
 
             for clause_index in self.watches_for_var[current_lit_idx].clone() {
