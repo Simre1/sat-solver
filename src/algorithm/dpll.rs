@@ -1,8 +1,9 @@
+use super::interface::*;
 use crate::algorithm::interface::Assignment::*;
 use crate::algorithm::interface::SATResult::*;
 use dimacs::{Clause, Lit, Sign};
 use std::collections::BTreeSet;
-use super::interface::*;
+use std::collections::HashSet;
 
 pub struct WatchedClause {
     watched: [Lit; 2],
@@ -55,7 +56,7 @@ impl DpllSolver {
             self.assignment[current_lit_idx] = assignment_from_sign(current_lit.sign());
 
             for clause_index in self.watches_for_var[current_lit_idx].clone() {
-                let clause_watcher = & self.clauses[clause_index];
+                let clause_watcher = &self.clauses[clause_index];
 
                 let watched1 = self.truth_value_of_literal(clause_watcher.watched[0]);
                 let watched2 = self.truth_value_of_literal(clause_watcher.watched[1]);
@@ -118,6 +119,113 @@ impl DpllSolver {
         }
     }
 
+    fn dpll_iterative(&mut self) -> SATResult {
+        // let mut assignments: Vec<Lit> = vec![];
+        // let mut stack: Vec<(Lit, usize)> = vec![];
+
+        let first = self.next_unassigned_lit();
+
+        match first {
+            None => {
+                return SAT {
+                    model: Model {
+                        assignments: vec![],
+                    },
+                };
+            }
+            Some(first_literal) => {
+                let mut stack: Vec<(Lit, usize)> = vec![(negate(first_literal), 0)];
+                let mut formula_top = false;
+                let mut formula_bottom;
+
+                let mut made_assignments: Vec<Lit> = vec![];
+                let mut next = first_literal;
+
+                loop {
+                    let result = self.bcp(next);
+
+                    println!(
+                        "{:?}, {:?}, {:?}, {:?}",
+                        next, &result, &stack, &made_assignments
+                    );
+                    match result {
+                        Some(implied_assignments) => {
+                            let mut implied_assignments2 = implied_assignments
+                                .into_iter()
+                                .collect::<HashSet<Lit>>()
+                                .into_iter()
+                                .collect();
+                            made_assignments.append(&mut implied_assignments2);
+
+                            formula_top = made_assignments.len() == self.assignment.len();
+
+                            if formula_top {
+                                println!("{:?}", &made_assignments);
+                            }
+                            formula_bottom = false;
+                        }
+                        None => {
+                            formula_bottom = true;
+                        }
+                    }
+
+                    if formula_top {
+                        return SAT {
+                            model: Model {
+                                assignments: self.assignment.iter().map(|x| x.to_bool()).collect(),
+                            },
+                        };
+                    }
+
+                    if formula_bottom {
+                        match stack.pop() {
+                            None => return UNSAT,
+                            Some((l, assign_level)) => {
+                                self.unassign(
+                                    &made_assignments[assign_level..made_assignments.len()],
+                                );
+                                made_assignments.truncate(assign_level);
+                                next = l;
+                            }
+                        }
+                    } else {
+                        next = self.next_unassigned_lit().unwrap();
+                        stack.push((negate(next), made_assignments.len()));
+                    }
+                }
+            }
+        }
+
+        // loop {
+        //     match next {
+        //         None => {
+        //             return SAT {
+        //                 model: Model {
+        //                     assignments: self.assignment.iter().map(|x| x.to_bool()).collect(),
+        //                 },
+        //             };
+        //         }
+        //         Some(next_lit) => {
+        //             match self.bcp(next_lit) {
+        //                 Some(assigned) => {
+        //                     assignments.push((assigned, negate(next_lit)));
+        //                     next = self.next_unassigned_lit();
+        //                 }
+        //                 None => match stack.pop() {
+        //                     Some((assigned, negated_lit)) => {
+        //                         self.unassign(&assigned);
+        //                         next = Some(negated_lit);
+        //                     }
+        //                     None => {
+        //                         return UNSAT;
+        //                     }
+        //                 },
+        //             };
+        //         }
+        //     }
+        // }
+    }
+
     fn next_unassigned_lit(&self) -> Option<Lit> {
         match self.assignment.iter().position(|&x| x == Unassigned) {
             Some(idx) => Some(Lit::from_i64((idx + 1) as i64)),
@@ -125,7 +233,7 @@ impl DpllSolver {
         }
     }
 
-    fn unassign(&mut self, lits: &Vec<Lit>) {
+    fn unassign(&mut self, lits: &[Lit]) {
         for lit in lits {
             self.assignment[lit_to_index(*lit)] = Unassigned;
         }
@@ -152,14 +260,14 @@ impl DpllSolver {
                 return Some(*lit);
             }
         }
-       
+
         return None;
     }
 }
 
 pub fn dpll_algorithm(num_vars: usize, clauses: Box<[Clause]>) -> SATResult {
     let mut solver = DpllSolver::from_dimacs(num_vars, clauses);
-    solver.dpll_recursive()
+    solver.dpll_iterative()
 }
 
 fn lit_to_index(lit: Lit) -> usize {
