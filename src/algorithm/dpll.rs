@@ -1,40 +1,28 @@
-use crate::algorithm::interface::SATResult::*;
-use dimacs::{Clause, Lit, Sign, Var};
-use std::collections::{BTreeMap, BTreeSet, LinkedList};
-use std::io::read_to_string;
-
 use super::interface::*;
+use crate::algorithm::interface::Assignment::*;
+use crate::algorithm::interface::SATResult::*;
+use dimacs::{Clause, Lit, Sign};
+use std::collections::BTreeSet;
+use std::collections::HashSet;
 
-pub struct ClauseWatcher {
-    watch1: Lit,
-    watch2: Lit,
+pub struct WatchedClause {
+    watched: [Lit; 2],
     clause: Clause,
 }
 
-pub struct Clauses {
-    clauses: Vec<ClauseWatcher>,
+pub struct DpllSolver {
+    clauses: Vec<WatchedClause>,
     watches_for_var: Vec<BTreeSet<usize>>,
+    assignment: Vec<Assignment>,
 }
 
-fn lit_to_index(lit: Lit) -> usize {
-    lit.var().to_u64() as usize - 1
-}
-
-fn index_to_positive_lit(index: usize) -> Lit {
-    Lit::from_i64((index + 1) as i64)
-}
-
-impl Clauses {
-    fn get_mapping(&mut self, var_index: usize) -> &mut BTreeSet<usize> {
-        &mut self.watches_for_var[var_index as usize - 1]
-    }
-
-    fn from_dimacs(num_vars: usize, dimacs: Box<[Clause]>) -> Clauses {
+impl DpllSolver {
+    fn from_dimacs(num_vars: usize, dimacs: Box<[Clause]>) -> DpllSolver {
         let mut clauses = Vec::with_capacity(dimacs.len());
         let mut watches_for_var = vec![BTreeSet::new(); num_vars];
+        let assignment = vec![Unassigned; num_vars];
 
         for (index, clause) in (*dimacs).into_iter().enumerate() {
-            // let watch1 = clause
             let watch1 = clause.lits()[0];
             let watch2 = if clause.lits().len() > 1 {
                 clause.lits()[1]
@@ -42,9 +30,8 @@ impl Clauses {
                 clause.lits()[0]
             };
 
-            clauses.push(ClauseWatcher {
-                watch1,
-                watch2,
+            clauses.push(WatchedClause {
+                watched: [watch1, watch2],
                 clause: clause.clone(),
             });
 
@@ -52,177 +39,219 @@ impl Clauses {
             watches_for_var[lit_to_index(watch2)].insert(index);
         }
 
-        Clauses {
+        DpllSolver {
             clauses,
             watches_for_var,
+            assignment,
         }
+    }
+
+    fn bcp(&mut self, lit: Lit) -> Option<Vec<Lit>> {
+        let mut assigned_lits: Vec<Lit> = vec![lit];
+
+        let mut iterations = 0;
+        while iterations < assigned_lits.len() {
+            let current_lit = assigned_lits[iterations];
+            let current_lit_idx = lit_to_index(current_lit);
+            //if both a aund !a were unit literals
+            if (self.truth_value_of_literal(current_lit) == Bot) {
+                self.unassign(&assigned_lits);
+                return None;
+            }
+            self.assignment[current_lit_idx] = assignment_from_sign(current_lit.sign());
+
+            for clause_index in self.watches_for_var[current_lit_idx].clone() {
+                let clause_watcher = &self.clauses[clause_index];
+
+                let watched1 = self.truth_value_of_literal(clause_watcher.watched[0]);
+                let watched2 = self.truth_value_of_literal(clause_watcher.watched[1]);
+
+                match (watched1, watched2) {
+                    (Top, _) | (_, Top) => continue,
+                    (Bot, Bot) => {
+                        self.unassign(&assigned_lits);
+                        return None;
+                    }
+                    (Bot, _) | (_, Bot) => {
+                        let bot_watch_idx = if watched1 == Bot { 0 } else { 1 };
+                        let other_watch_idx = 1 - bot_watch_idx;
+
+                        let new_watched_lit = self.find_next_watched_literal(
+                            &clause_watcher.clause,
+                            clause_watcher.watched[other_watch_idx],
+                        );
+                        match new_watched_lit {
+                            Some(found_lit) => {
+                                let mut_clause_watcher = &mut self.clauses[clause_index];
+                                mut_clause_watcher.watched[bot_watch_idx] = found_lit;
+                                self.watches_for_var[current_lit_idx].remove(&clause_index);
+                                self.watches_for_var[lit_to_index(found_lit)].insert(clause_index);
+                            }
+                            None => {
+                                assigned_lits.push(clause_watcher.watched[other_watch_idx]);
+                            }
+                        }
+                    }
+                    (_, _) => panic!("Should not happen"),
+                }
+            }
+            iterations += 1;
+        }
+        return Some(assigned_lits);
+    }
+
+    fn dpll_recursive(&mut self) -> SATResult {
+        match self.next_unassigned_lit() {
+            None => {
+                return SAT {
+                    model: Model {
+                        assignments: self.assignment.iter().map(|x| x.to_bool()).collect(),
+                    },
+                };
+            }
+            Some(next_lit) => {
+                for lit in [next_lit, negate(next_lit)] {
+                    match self.bcp(lit) {
+                        Some(assigned) => match self.dpll_recursive() {
+                            SAT { model } => return SAT { model },
+                            UNSAT => self.unassign(&assigned),
+                        },
+                        None => (),
+                    }
+                }
+                return UNSAT;
+            }
+        }
+    }
+
+    fn dpll_iterative(&mut self) -> SATResult {
+        let first = self.next_unassigned_lit();
+
+        match first {
+            None => {
+                return SAT {
+                    model: Model {
+                        assignments: vec![],
+                    },
+                };
+            }
+            Some(first_literal) => {
+                let mut stack: Vec<(Lit, usize)> = vec![(negate(first_literal), 0)];
+                let mut formula_top = false;
+                let mut formula_bottom;
+
+                let mut made_assignments: Vec<Lit> = vec![];
+                let mut next = first_literal;
+
+                loop {
+                    let result = self.bcp(next);
+
+                    // println!(
+                    //     "{:?}, {:?}, {:?}, {:?}",
+                    //     next, &result, &stack, &made_assignments
+                    // );
+                    match result {
+                        Some(mut implied_assignments) => {
+                            // Current fix to deduplicate bcp output
+                            let mut implied_assignments2 = implied_assignments
+                                .into_iter()
+                                .collect::<HashSet<Lit>>()
+                                .into_iter()
+                                .collect();
+                            made_assignments.append(&mut implied_assignments2);
+
+                            formula_top = made_assignments.len() == self.assignment.len();
+
+                            formula_bottom = false;
+                        }
+                        None => {
+                            formula_bottom = true;
+                        }
+                    }
+
+                    if formula_top {
+                        return SAT {
+                            model: Model {
+                                assignments: self.assignment.iter().map(|x| x.to_bool()).collect(),
+                            },
+                        };
+                    }
+
+                    if formula_bottom {
+                        match stack.pop() {
+                            None => return UNSAT,
+                            Some((l, assign_level)) => {
+                                self.unassign(
+                                    &made_assignments[assign_level..made_assignments.len()],
+                                );
+                                made_assignments.truncate(assign_level);
+                                next = l;
+                            }
+                        }
+                    } else {
+                        next = self.next_unassigned_lit().unwrap();
+                        stack.push((negate(next), made_assignments.len()));
+                    }
+                }
+            }
+        }
+    }
+
+    fn next_unassigned_lit(&self) -> Option<Lit> {
+        match self.assignment.iter().position(|&x| x == Unassigned) {
+            Some(idx) => Some(Lit::from_i64((idx + 1) as i64)),
+            None => None,
+        }
+    }
+
+    fn unassign(&mut self, lits: &[Lit]) {
+        for lit in lits {
+            self.assignment[lit_to_index(*lit)] = Unassigned;
+        }
+    }
+
+    fn truth_value_of_literal(&self, lit: Lit) -> Assignment {
+        let assignment = self.assignment[lit_to_index(lit)];
+        match (lit.sign(), assignment) {
+            (_, Unassigned) => Unassigned,
+            (Sign::Neg, Bot) | (Sign::Pos, Top) => Top,
+            (Sign::Pos, Bot) | (Sign::Neg, Top) => Bot,
+        }
+    }
+
+    fn find_next_watched_literal(&self, clause: &Clause, other_watched: Lit) -> Option<Lit> {
+        for lit in clause.lits() {
+            if self.assignment[lit_to_index(*lit)] == Unassigned && *lit != other_watched {
+                return Some(*lit);
+            }
+        }
+
+        for lit in clause.lits() {
+            if self.truth_value_of_literal(*lit) == Top {
+                return Some(*lit);
+            }
+        }
+
+        return None;
     }
 }
 
-#[derive(Debug)]
-pub struct Assignments {
-    assignments: Vec<Assignment>,
+pub fn dpll_algorithm(num_vars: usize, clauses: Box<[Clause]>) -> SATResult {
+    let mut solver = DpllSolver::from_dimacs(num_vars, clauses);
+    solver.dpll_iterative()
 }
 
-impl Assignments {
-    fn all_unassigned(num_vars: usize) -> Assignments {
-        Assignments {
-            assignments: vec![Assignment::Unassigned; num_vars],
-        }
-    }
+fn lit_to_index(lit: Lit) -> usize {
+    lit.var().to_u64() as usize - 1
+}
+
+fn negate(lit: Lit) -> Lit {
+    Lit::from_i64(-(lit.var().0 as i64))
 }
 
 fn assignment_from_sign(sign: Sign) -> Assignment {
     match sign {
-        Sign::Pos => Assignment::Top,
-        Sign::Neg => Assignment::Bot,
-    }
-}
-
-fn apply_sign(sign: Sign, assignment: Assignment) -> Assignment {
-    match (sign, assignment) {
-        (Sign::Pos, assignment) => assignment,
-        (Sign::Neg, Assignment::Top) => Assignment::Bot,
-        (Sign::Neg, Assignment::Bot) => Assignment::Top,
-        (Sign::Neg, Assignment::Unassigned) => Assignment::Unassigned,
-    }
-}
-
-fn find_next_watched_literal(
-    assignments: &Assignments,
-    clause: &Clause,
-    other_watched: Lit,
-) -> Option<Lit> {
-    for lit in clause.lits() {
-        if assignments.assignments[lit_to_index(*lit)] == Assignment::Unassigned
-            || *lit == other_watched
-        {
-            return Some(*lit);
-        }
-    }
-    return None;
-}
-
-// fn B
-fn bcp(clauses: &mut Clauses, assignments: &mut Assignments, lit: Lit) -> Option<Vec<Lit>> {
-    let mut assignment_stack: Vec<Lit> = Vec::new();
-
-    assignment_stack.push(lit);
-
-    let mut iterations = 0;
-    while (iterations < assignment_stack.len()) {
-        let current_lit = assignment_stack[iterations];
-        let i = lit_to_index(current_lit);
-        assignments.assignments[i] = assignment_from_sign(current_lit.sign());
-        let mut mapping_changes = LinkedList::new();
-
-        for clauseIndex in clauses.watches_for_var[i].iter() {
-            let clauseWatcher = &mut clauses.clauses[*clauseIndex];
-
-            let assignment1 = assignments.assignments[lit_to_index(clauseWatcher.watch1)];
-            let assignment2 = assignments.assignments[lit_to_index(clauseWatcher.watch2)];
-            let sign1 = clauseWatcher.watch1.sign();
-            let sign2 = clauseWatcher.watch2.sign();
-
-            let watched1 = apply_sign(sign1, assignment1);
-            let watched2 = apply_sign(sign2, assignment2);
-
-            if watched1 == Assignment::Top || watched2 == Assignment::Top {
-                continue;
-            }
-
-            if watched1 == Assignment::Bot && watched2 == Assignment::Bot {
-                for wrongly_assigned in assignment_stack {
-                    assignments.assignments[lit_to_index(wrongly_assigned)] =
-                        Assignment::Unassigned;
-                }
-                return None;
-            }
-
-            if watched1 == Assignment::Bot {
-                let next = find_next_watched_literal(
-                    assignments,
-                    &clauseWatcher.clause,
-                    clauseWatcher.watch2,
-                );
-                match next {
-                    Some(lit) => {
-                        clauseWatcher.watch1 = lit;
-                        mapping_changes.push_front((i, lit_to_index(lit), *clauseIndex));
-                    }
-                    None => {
-                        assignment_stack.push(clauseWatcher.watch2);
-                    }
-                }
-            }
-
-            if watched2 == Assignment::Bot {
-                let next = find_next_watched_literal(
-                    assignments,
-                    &clauseWatcher.clause,
-                    clauseWatcher.watch1,
-                );
-                match next {
-                    Some(lit) => {
-                        clauseWatcher.watch2 = lit;
-                        mapping_changes.push_front((i, lit_to_index(lit), *clauseIndex));
-                    }
-                    None => {
-                        assignment_stack.push(clauseWatcher.watch1);
-                    }
-                }
-            }
-
-            if watched1 == Assignment::Unassigned && watched2 == Assignment::Unassigned {
-                panic!("Should not happen")
-            }
-        }
-
-        for (from, to, clauseIndex) in mapping_changes {
-            clauses.watches_for_var[from].remove(&clauseIndex);
-            clauses.watches_for_var[to].insert(clauseIndex);
-        }
-        iterations += 1;
-    }
-    return Some(assignment_stack);
-}
-
-pub fn dpll_algorithm(num_vars: usize, clauses: Box<[Clause]>) -> SATResult {
-    let mut clauses = Clauses::from_dimacs(num_vars, clauses);
-    let mut assignments = Assignments::all_unassigned(num_vars);
-    let mut assignment_stack: Vec<Vec<usize>> = vec![];
-    let mut unassigned: Vec<usize> = (0..num_vars).into_iter().collect();
-
-    loop {
-        match unassigned.pop() {
-            None => {
-                println!("{:?} {:?}", unassigned, assignments);
-                return SAT {
-                    model: Model {
-                        assignments: assignments
-                            .assignments
-                            .iter()
-                            .map(|x| x.to_bool())
-                            .collect(),
-                    },
-                };
-            }
-            Some(next) => {
-                let result = bcp(&mut clauses, &mut assignments, index_to_positive_lit(next));
-                match result {
-                    Some(lits) => {
-                        assignment_stack.push(lits.iter().map(|x| lit_to_index(*x)).collect())
-                    }
-                    None => match assignment_stack.pop() {
-                        Some(mut to_unassign) => {
-                            unassigned.append(&mut to_unassign);
-                        }
-                        None => {
-                            return UNSAT;
-                        }
-                    },
-                }
-            }
-        }
+        Sign::Pos => Top,
+        Sign::Neg => Bot,
     }
 }
