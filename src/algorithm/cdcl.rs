@@ -2,18 +2,29 @@ use super::interface::*;
 use crate::algorithm::interface::Assignment::*;
 use crate::algorithm::interface::SATResult::*;
 use dimacs::{Clause, Lit, Sign};
-use std::collections::BTreeSet;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
-pub struct WatchedClause {
+pub struct Node {
+    // level: usize,
+    reason: Vec<Lit>
+}
+
+struct WatchedClause {
     watched: [Lit; 2],
     clause: Clause,
 }
 
-pub struct BCPSolver {
+pub enum BcpResult {
+    Conflict(usize),
+    Implications(Vec<Lit>),
+
+}
+
+struct BCPSolver {
     clauses: Vec<WatchedClause>,
     watches_for_var: Vec<BTreeSet<usize>>,
     assignment: Vec<Assignment>,
+    implication_graph: HashMap<Lit, Node>
 }
 
 impl BCPSolver {
@@ -43,42 +54,42 @@ impl BCPSolver {
             clauses,
             watches_for_var,
             assignment,
+            implication_graph: HashMap::new()
         }
     }
 
-    fn bcp(&mut self, lit: Lit) -> Option<Vec<Lit>> {
+    fn bcp(&mut self, lit: Lit) -> BcpResult {
+
+        self.implication_graph.insert(lit, Node {reason : vec![]});
+
         let mut assigned_lits: Vec<Lit> = vec![lit];
 
         let mut iterations = 0;
         while iterations < assigned_lits.len() {
             let current_lit = assigned_lits[iterations];
             let current_lit_idx = lit_to_index(current_lit);
-            //if both a aund !a were unit literals
-            if (self.truth_value_of_literal(current_lit) == Bot) {
-                self.unassign(&assigned_lits);
-                return None;
-            }
+
             self.assignment[current_lit_idx] = assignment_from_sign(current_lit.sign());
 
             for clause_index in self.watches_for_var[current_lit_idx].clone() {
-                let clause_watcher = &self.clauses[clause_index];
+                let watched_clause = &self.clauses[clause_index];
 
-                let watched1 = self.truth_value_of_literal(clause_watcher.watched[0]);
-                let watched2 = self.truth_value_of_literal(clause_watcher.watched[1]);
+                let watched1 = self.truth_value_of_literal(watched_clause.watched[0]);
+                let watched2 = self.truth_value_of_literal(watched_clause.watched[1]);
 
                 match (watched1, watched2) {
                     (Top, _) | (_, Top) => continue,
                     (Bot, Bot) => {
                         self.unassign(&assigned_lits);
-                        return None;
+                        return BcpResult::Conflict(clause_index);
                     }
                     (Bot, _) | (_, Bot) => {
                         let bot_watch_idx = if watched1 == Bot { 0 } else { 1 };
                         let other_watch_idx = 1 - bot_watch_idx;
 
                         let new_watched_lit = self.find_next_watched_literal(
-                            &clause_watcher.clause,
-                            clause_watcher.watched[other_watch_idx],
+                            &watched_clause.clause,
+                            watched_clause.watched[other_watch_idx],
                         );
                         match new_watched_lit {
                             Some(found_lit) => {
@@ -88,7 +99,21 @@ impl BCPSolver {
                                 self.watches_for_var[lit_to_index(found_lit)].insert(clause_index);
                             }
                             None => {
-                                assigned_lits.push(clause_watcher.watched[other_watch_idx]);
+
+                                let new_unit_lit = watched_clause.watched[other_watch_idx];
+
+                                if self.truth_value_of_literal(new_unit_lit) == Bot {
+                                    self.unassign(&assigned_lits);
+                                    return BcpResult::Conflict(clause_index);
+
+                                } else if self.truth_value_of_literal(new_unit_lit) == Top {
+                                    continue;
+                                }
+
+                                let reasons = watched_clause.clause.lits().iter()
+                                        .filter(|l| **l != new_unit_lit).map(|l| negate(*l)).collect();
+                                self.implication_graph.insert(new_unit_lit,  Node {reason: reasons});
+                                assigned_lits.push(new_unit_lit);
                             }
                         }
                     }
@@ -97,7 +122,7 @@ impl BCPSolver {
             }
             iterations += 1;
         }
-        return Some(assigned_lits);
+        return BcpResult::Implications(assigned_lits);
     }
 
     fn next_unassigned_lit(&self) -> Option<Lit> {
@@ -137,9 +162,30 @@ impl BCPSolver {
 
         return None;
     }
+
+    fn collect_relevant_decisions(&self, clause_index: usize) -> Vec<Lit>{
+        let mut visited = HashSet::new();
+        let mut queue = Vec::new();
+        let mut decisions = HashSet::new();
+
+        for lit in self.clauses[clause_index].clause.lits(){
+            queue.insert(*lit);
+        };
+
+        while let Some(current) = queue.pop() {
+        }
+
+    }
 }
 
-fn dpll_recursive(bcp_solver: &mut BCPSolver) -> SATResult {
+pub fn cdcl_algorithm(num_vars: usize, clauses: Box<[Clause]>) -> SATResult {
+    let mut solver = BCPSolver::from_dimacs(num_vars, clauses);
+    todo!("Do something");
+}
+
+
+
+fn cdcl_recursive(bcp_solver: &mut  BCPSolver) -> SATResult {
     match bcp_solver.next_unassigned_lit() {
         None => {
             return SAT {
@@ -151,92 +197,43 @@ fn dpll_recursive(bcp_solver: &mut BCPSolver) -> SATResult {
         Some(next_lit) => {
             for lit in [next_lit, negate(next_lit)] {
                 match bcp_solver.bcp(lit) {
-                    Some(assigned) => match dpll_recursive(bcp_solver) {
+                    BcpResult::Implications(assigned) => match cdcl_recursive(bcp_solver) {
                         SAT { model } => return SAT { model },
                         UNSAT => bcp_solver.unassign(&assigned),
                     },
-                    None => (),
+                    BcpResult::Conflict(clause_index) => {
+                        let decisions: Vec<Lit> = bcp_solver.collect_relevant_decisions(clause_index);
+                        let learned_clause = Clause::from_vec (decisions.into_iter()
+                                .map( | l| negate( * l)).collect());
+
+                        let watch1 = learned_clause.lits()[0];
+
+                        match bcp_solver.find_next_watched_literal(&learned_clause, watch1) {
+                            Some (other) => {
+                                let watch2 = other;
+                            }
+                            None => {
+                                let watch2 = if learned_clause.lits().len() > 1 {
+                                    learned_clause.lits()[1]
+                                } else {
+                                    learned_clause.lits()[0]
+                                };
+                            }
+                        }
+
+                        let watched_clause = WatchedClase {
+                            watched: [watch1, watch2],
+                            clause: clause.clone()
+                        };
+
+                        let index = bcp_solver.clauses.len();
+                        bcp_solver.clauses.push(watched_clause);
+                        bcp_solver.watches_for_var[lit_to_index(watch1)].insert(index);
+                        bcp_solver.watches_for_var[lit_to_index(watch2)].insert(index);
+                    },
                 }
             }
             return UNSAT;
         }
     }
-}
-
-fn dpll_iterative(bcp_solver: &mut BCPSolver) -> SATResult {
-    let first = bcp_solver.next_unassigned_lit();
-
-    match first {
-        None => {
-            return SAT {
-                model: Model {
-                    assignments: vec![],
-                },
-            };
-        }
-        Some(first_literal) => {
-            let mut stack: Vec<(Lit, usize)> = vec![(negate(first_literal), 0)];
-            let mut formula_top = false;
-            let mut formula_bottom;
-
-            let mut made_assignments: Vec<Lit> = vec![];
-            let mut next = first_literal;
-
-            loop {
-                let result = bcp_solver.bcp(next);
-
-                // println!(
-                //     "{:?}, {:?}, {:?}, {:?}",
-                //     next, &result, &stack, &made_assignments
-                // );
-                match result {
-                    Some(mut implied_assignments) => {
-                        // Current fix to deduplicate bcp output
-                        let mut implied_assignments2 = implied_assignments
-                            .into_iter()
-                            .collect::<HashSet<Lit>>()
-                            .into_iter()
-                            .collect();
-                        made_assignments.append(&mut implied_assignments2);
-
-                        formula_top = made_assignments.len() == bcp_solver.assignment.len();
-
-                        formula_bottom = false;
-                    }
-                    None => {
-                        formula_bottom = true;
-                    }
-                }
-
-                if formula_top {
-                    return SAT {
-                        model: Model {
-                            assignments: bcp_solver.assignment.iter().map(|x| x.to_bool()).collect(),
-                        },
-                    };
-                }
-
-                if formula_bottom {
-                    match stack.pop() {
-                        None => return UNSAT,
-                        Some((l, assign_level)) => {
-                            bcp_solver.unassign(
-                                &made_assignments[assign_level..made_assignments.len()],
-                            );
-                            made_assignments.truncate(assign_level);
-                            next = l;
-                        }
-                    }
-                } else {
-                    next = bcp_solver.next_unassigned_lit().unwrap();
-                    stack.push((negate(next), made_assignments.len()));
-                }
-            }
-        }
-    }
-}
-
-pub fn dpll_algorithm(num_vars: usize, clauses: Box<[Clause]>) -> SATResult {
-    let mut solver = BCPSolver::from_dimacs(num_vars, clauses);
-    dpll_iterative(&mut solver)
 }

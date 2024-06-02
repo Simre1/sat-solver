@@ -22,6 +22,7 @@ impl Display for AlgorithmType {
         match self {
             AlgorithmType::Simple => f.write_str("simple"),
             AlgorithmType::DPLL => f.write_str("dpll"),
+            AlgorithmType::CDCL => f.write_str("cdcl"),
         }
     }
 }
@@ -29,7 +30,8 @@ impl Display for AlgorithmType {
 #[derive(Parser, Debug, Clone)]
 pub enum AlgorithmType {
     Simple,
-    DPLL
+    DPLL,
+    CDCL
 }
 
 impl FromStr for AlgorithmType {
@@ -39,7 +41,8 @@ impl FromStr for AlgorithmType {
         match s.to_lowercase().as_str() {
             "simple" => Ok(AlgorithmType::Simple),
             "dpll" => Ok(AlgorithmType::DPLL),
-            _ => Err("Not recognized".to_string() + s + "\nSupported algorithms: \"simple\""),
+            "cdcl" => Ok(AlgorithmType::CDCL),
+            _ => Err("Not recognized".to_string() + s + "\nSupported algorithms: \"simple\", \"dpll\", \"cdcl\""),
         }
     }
 }

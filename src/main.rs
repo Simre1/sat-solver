@@ -4,6 +4,7 @@ use algorithm::{interface::SATResult, simple::simple_algorithm};
 use cli::{parse_cli_args, AlgorithmType};
 use dimacs::{parse_dimacs, Instance};
 use crate::algorithm::dpll::dpll_algorithm;
+use crate::algorithm::cdcl::cdcl_algorithm;
 
 mod algorithm;
 mod cli;
@@ -30,7 +31,7 @@ fn main() {
     let sat_result = match args.algorithm {
         AlgorithmType::Simple => simple_algorithm(num_vars, clauses),
         AlgorithmType::DPLL => dpll_algorithm(num_vars as usize, clauses),
-
+        AlgorithmType::CDCL => cdcl_algorithm(num_vars as usize, clauses),
     };
 
     // Print solving result
