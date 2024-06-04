@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 pub struct Node {
     // level: usize,
-    reason: Vec<Lit>
+    reason: Vec<Lit>,
 }
 
 struct WatchedClause {
@@ -17,14 +17,13 @@ struct WatchedClause {
 pub enum BcpResult {
     Conflict(usize),
     Implications(Vec<Lit>),
-
 }
 
 struct BCPSolver {
     clauses: Vec<WatchedClause>,
     watches_for_var: Vec<BTreeSet<usize>>,
     assignment: Vec<Assignment>,
-    implication_graph: HashMap<Lit, Node>
+    implication_graph: HashMap<Lit, Node>,
 }
 
 impl BCPSolver {
@@ -54,13 +53,12 @@ impl BCPSolver {
             clauses,
             watches_for_var,
             assignment,
-            implication_graph: HashMap::new()
+            implication_graph: HashMap::new(),
         }
     }
 
     fn bcp(&mut self, lit: Lit) -> BcpResult {
-
-        self.implication_graph.insert(lit, Node {reason : vec![]});
+        self.implication_graph.insert(lit, Node { reason: vec![] });
 
         let mut assigned_lits: Vec<Lit> = vec![lit];
 
@@ -99,20 +97,24 @@ impl BCPSolver {
                                 self.watches_for_var[lit_to_index(found_lit)].insert(clause_index);
                             }
                             None => {
-
                                 let new_unit_lit = watched_clause.watched[other_watch_idx];
 
                                 if self.truth_value_of_literal(new_unit_lit) == Bot {
                                     self.unassign(&assigned_lits);
                                     return BcpResult::Conflict(clause_index);
-
                                 } else if self.truth_value_of_literal(new_unit_lit) == Top {
                                     continue;
                                 }
 
-                                let reasons = watched_clause.clause.lits().iter()
-                                        .filter(|l| **l != new_unit_lit).map(|l| negate(*l)).collect();
-                                self.implication_graph.insert(new_unit_lit,  Node {reason: reasons});
+                                let reasons = watched_clause
+                                    .clause
+                                    .lits()
+                                    .iter()
+                                    .filter(|l| **l != new_unit_lit)
+                                    .map(|l| negate(*l))
+                                    .collect();
+                                self.implication_graph
+                                    .insert(new_unit_lit, Node { reason: reasons });
                                 assigned_lits.push(new_unit_lit);
                             }
                         }
@@ -163,29 +165,41 @@ impl BCPSolver {
         return None;
     }
 
-    fn collect_relevant_decisions(&self, clause_index: usize) -> Vec<Lit>{
+    fn collect_relevant_decisions(&self, clause_index: usize) -> Vec<Lit> {
         let mut visited = HashSet::new();
         let mut queue = Vec::new();
         let mut decisions = HashSet::new();
 
-        for lit in self.clauses[clause_index].clause.lits(){
-            queue.insert(*lit);
-        };
-
-        while let Some(current) = queue.pop() {
+        for lit in self.clauses[clause_index].clause.lits() {
+            queue.push(*lit);
         }
 
+        while let Some(current) = queue.pop() {
+            if (visited.contains(&current)) {
+                continue;
+            }
+
+            visited.insert(current);
+
+            let mut reasons = self.implication_graph.get(&current).unwrap().reason.clone();
+
+            if reasons.len() == 0 {
+                decisions.insert(current);
+            } else {
+                queue.append(&mut reasons);
+            }
+        }
+
+        return decisions.into_iter().collect();
     }
 }
 
 pub fn cdcl_algorithm(num_vars: usize, clauses: Box<[Clause]>) -> SATResult {
     let mut solver = BCPSolver::from_dimacs(num_vars, clauses);
-    todo!("Do something");
+    cdcl_recursive(&mut solver)
 }
 
-
-
-fn cdcl_recursive(bcp_solver: &mut  BCPSolver) -> SATResult {
+fn cdcl_recursive(bcp_solver: &mut BCPSolver) -> SATResult {
     match bcp_solver.next_unassigned_lit() {
         None => {
             return SAT {
@@ -202,18 +216,21 @@ fn cdcl_recursive(bcp_solver: &mut  BCPSolver) -> SATResult {
                         UNSAT => bcp_solver.unassign(&assigned),
                     },
                     BcpResult::Conflict(clause_index) => {
-                        let decisions: Vec<Lit> = bcp_solver.collect_relevant_decisions(clause_index);
-                        let learned_clause = Clause::from_vec (decisions.into_iter()
-                                .map( | l| negate( * l)).collect());
+                        let decisions: Vec<Lit> =
+                            bcp_solver.collect_relevant_decisions(clause_index);
+                        let learned_clause =
+                            Clause::from_vec(decisions.into_iter().map(|l| negate(l)).collect());
 
                         let watch1 = learned_clause.lits()[0];
 
+                        let watch2;
+
                         match bcp_solver.find_next_watched_literal(&learned_clause, watch1) {
-                            Some (other) => {
-                                let watch2 = other;
+                            Some(other) => {
+                                watch2 = other;
                             }
                             None => {
-                                let watch2 = if learned_clause.lits().len() > 1 {
+                                watch2 = if learned_clause.lits().len() > 1 {
                                     learned_clause.lits()[1]
                                 } else {
                                     learned_clause.lits()[0]
@@ -221,16 +238,16 @@ fn cdcl_recursive(bcp_solver: &mut  BCPSolver) -> SATResult {
                             }
                         }
 
-                        let watched_clause = WatchedClase {
+                        let watched_clause = WatchedClause {
                             watched: [watch1, watch2],
-                            clause: clause.clone()
+                            clause: learned_clause.clone(),
                         };
 
                         let index = bcp_solver.clauses.len();
                         bcp_solver.clauses.push(watched_clause);
                         bcp_solver.watches_for_var[lit_to_index(watch1)].insert(index);
                         bcp_solver.watches_for_var[lit_to_index(watch2)].insert(index);
-                    },
+                    }
                 }
             }
             return UNSAT;
