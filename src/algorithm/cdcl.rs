@@ -4,6 +4,7 @@ use crate::algorithm::interface::SATResult::*;
 use dimacs::{Clause, Lit, Sign};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+#[derive(Debug)]
 pub struct Node {
     // level: usize,
     reason: Vec<Lit>,
@@ -111,7 +112,7 @@ impl BCPSolver {
                                     .lits()
                                     .iter()
                                     .filter(|l| **l != new_unit_lit)
-                                    .map(|l| negate(*l))
+                                    .map(|l| *l)
                                     .collect();
                                 self.implication_graph
                                     .insert(new_unit_lit, Node { reason: reasons });
@@ -216,6 +217,10 @@ fn cdcl_recursive(bcp_solver: &mut BCPSolver) -> SATResult {
                         UNSAT => bcp_solver.unassign(&assigned),
                     },
                     BcpResult::Conflict(clause_index) => {
+                        for (key, val) in bcp_solver.implication_graph.iter() {
+                            println!("{:?}: {:?}", &key, &val);
+                        }
+                        println!("\n\n {:?}", &bcp_solver.clauses[clause_index].clause,);
                         let decisions: Vec<Lit> =
                             bcp_solver.collect_relevant_decisions(clause_index);
                         let learned_clause =
