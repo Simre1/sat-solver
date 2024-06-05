@@ -112,8 +112,9 @@ impl BCPSolver {
                                     .lits()
                                     .iter()
                                     .filter(|l| **l != new_unit_lit)
-                                    .map(|l| *l)
+                                    .map(|l| negate(*l))
                                     .collect();
+                                println!("Reasons: {:?}", &reasons);
                                 self.implication_graph
                                     .insert(new_unit_lit, Node { reason: reasons });
                                 assigned_lits.push(new_unit_lit);
@@ -172,7 +173,7 @@ impl BCPSolver {
         let mut decisions = HashSet::new();
 
         for lit in self.clauses[clause_index].clause.lits() {
-            queue.push(*lit);
+            queue.push(negate(*lit));
         }
 
         while let Some(current) = queue.pop() {
@@ -182,7 +183,9 @@ impl BCPSolver {
 
             visited.insert(current);
 
-            let mut reasons = self.implication_graph.get(&current).unwrap().reason.clone();
+            println!("{:?}", current);
+            let mut reasons: Vec<Lit> =
+                self.implication_graph.get(&current).unwrap().reason.clone();
 
             if reasons.len() == 0 {
                 decisions.insert(current);
@@ -221,6 +224,7 @@ fn cdcl_recursive(bcp_solver: &mut BCPSolver) -> SATResult {
                             println!("{:?}: {:?}", &key, &val);
                         }
                         println!("\n\n {:?}", &bcp_solver.clauses[clause_index].clause,);
+                        println!("\n\n {:?}", &bcp_solver.assignment);
                         let decisions: Vec<Lit> =
                             bcp_solver.collect_relevant_decisions(clause_index);
                         let learned_clause =
