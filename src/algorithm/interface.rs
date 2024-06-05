@@ -1,8 +1,16 @@
-use dimacs::{Clause, Lit, Sign};
-
+use SATResult::*;
 pub enum SATResult {
     SAT { model: Model },
     UNSAT,
+}
+impl PartialEq for SATResult {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (SAT { model: _ }, SAT { model: _ }) => true,
+            (UNSAT, UNSAT) => true,
+            _ => false,
+        }
+    }
 }
 
 pub struct Model {
@@ -23,31 +31,5 @@ impl Assignment {
             Assignment::Bot => false,
             Assignment::Unassigned => panic!("cannot convert Unassigned to bool"),
         }
-    }
-}
-
-pub fn lit_to_index(lit: Lit) -> usize {
-    lit.var().to_u64() as usize - 1
-}
-
-pub fn index_to_lit(index: usize, assignment: Assignment) -> Lit {
-    match assignment {
-        Assignment::Top => Lit::from_i64(index as i64 + 1),
-        Assignment::Bot => Lit::from_i64(-(index as i64 + 1)),
-        Assignment::Unassigned => panic!("Cannot create unassigned lit from index {}", index),
-    }
-}
-
-pub fn negate(lit: Lit) -> Lit {
-    match lit.sign() {
-        Sign::Pos => Lit::from_i64(-(lit.var().0 as i64)),
-        Sign::Neg => Lit::from_i64(lit.var().0 as i64),
-    }
-}
-
-pub fn assignment_from_sign(sign: Sign) -> Assignment {
-    match sign {
-        Sign::Pos => Assignment::Top,
-        Sign::Neg => Assignment::Bot,
     }
 }

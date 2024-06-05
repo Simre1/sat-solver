@@ -3,9 +3,9 @@ use dimacs::Sign;
 use dimacs::Lit;
 use super::interface::*;
 
-pub fn simple_algorithm(num_vars: u64, clauses: Box<[Clause]>) -> SATResult {
-    let mut assignment = vec![Assignment::Unassigned;num_vars as usize];
-    let sat = simple_algorithm_recursion(num_vars as usize, &clauses, &mut assignment, 0);
+pub fn simple_algorithm(num_vars: usize, clauses: &Box<[Clause]>) -> SATResult {
+    let mut assignment = vec![Assignment::Unassigned;num_vars];
+    let sat = simple_algorithm_recursion(num_vars, &clauses, &mut assignment, 0);
 
     if sat {
         let bool_assignment = assignment.iter().map(|a| a.to_bool()).collect();
