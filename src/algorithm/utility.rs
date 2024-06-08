@@ -1,5 +1,5 @@
+use dimacs::{parse_dimacs, Clause, Instance, Lit, Sign};
 use std::collections::HashSet;
-use dimacs::{Clause, Instance, Lit, parse_dimacs, Sign};
 
 use crate::algorithm::interface::Assignment;
 
@@ -29,19 +29,18 @@ pub fn assignment_from_sign(sign: Sign) -> Assignment {
     }
 }
 
-pub fn preprocess(dimacs: &Box<[Clause]>) -> Box<[Clause]>{
+pub fn preprocess(dimacs: &Box<[Clause]>) -> Box<[Clause]> {
     let mut clauses = Vec::new();
-    for clause in dimacs.iter(){
-        match preprocess_clause(clause)
-        {
+    for clause in dimacs.iter() {
+        match preprocess_clause(clause) {
             Some(cleaned) => clauses.push(cleaned),
-            None => ()
+            None => (),
         }
     }
     return clauses.into_boxed_slice();
 }
 
-fn preprocess_clause(clause: &Clause) -> Option<Clause>{
+fn preprocess_clause(clause: &Clause) -> Option<Clause> {
     let mut seen = HashSet::new();
     let mut duplicates = Vec::new();
 
@@ -51,33 +50,37 @@ fn preprocess_clause(clause: &Clause) -> Option<Clause>{
         }
         //Tautology
         if seen.contains(&negate(lit)) {
-            return None
+            return None;
         }
     }
 
     let cleaned_clause = Clause::from_vec(seen.into_iter().collect());
-    if cleaned_clause.len() == 0 {return None}
+    if cleaned_clause.len() == 0 {
+        return None;
+    }
     return Some(cleaned_clause);
 }
 
-pub fn check_result(clauses: &Box<[Clause]>, assignment:  &Vec<bool>)->bool{
-    clauses.iter().all(|clause| clause_true(clause, assignment) )
+pub fn check_result(clauses: &Box<[Clause]>, assignment: &Vec<bool>) -> bool {
+    clauses.iter().all(|clause| clause_true(clause, assignment))
 }
 
-fn clause_true(clause: &Clause,  assignment:  &Vec<bool>)->bool{
-    clause.lits().iter().any(|lit| true_assignment(lit, assignment) )
+fn clause_true(clause: &Clause, assignment: &Vec<bool>) -> bool {
+    clause
+        .lits()
+        .iter()
+        .any(|lit| true_assignment(lit, assignment))
 }
 
-fn true_assignment(lit: &Lit, assignment: &Vec<bool>)->bool{
-    let var_idx = (lit.var().0-1) as usize;
-    (lit.sign() == Sign::Neg && assignment[var_idx] == false) ||
-        (lit.sign() == Sign::Pos && assignment[var_idx] == true)
+fn true_assignment(lit: &Lit, assignment: &Vec<bool>) -> bool {
+    let var_idx = (lit.var().0 - 1) as usize;
+    (lit.sign() == Sign::Neg && assignment[var_idx] == false)
+        || (lit.sign() == Sign::Pos && assignment[var_idx] == true)
 }
 
 pub fn read_file(file: &str) -> (usize, Box<[Clause]>) {
-
     // Parse CNF input
-    let instance = match parse_dimacs(file){
+    let instance = match parse_dimacs(file) {
         Ok(data) => data,
         Err(_) => {
             println!("could not parse file: {:?}", file);

@@ -1,14 +1,14 @@
 use super::interface::*;
 use crate::algorithm::interface::Assignment::*;
 use crate::algorithm::interface::SATResult::*;
+use crate::algorithm::utility::*;
 use dimacs::{Clause, Lit, Sign};
 use std::collections::{BTreeSet, HashMap, HashSet};
-use crate::algorithm::utility::*;
 
 #[derive(Debug)]
 pub struct Node {
     level: usize,
-    reason: Vec<Lit>,
+    reason: Vec<usize>,
 }
 
 struct WatchedClause {
@@ -25,7 +25,7 @@ struct BCPSolver {
     clauses: Vec<WatchedClause>,
     watches_for_var: Vec<BTreeSet<usize>>,
     assignment: Vec<Assignment>,
-    implication_graph: HashMap<Lit, Node>,
+    implication_graph: HashMap<usize, Node>,
 }
 
 impl BCPSolver {
@@ -36,6 +36,16 @@ impl BCPSolver {
         let assignment = vec![Unassigned; num_vars];
 
         for (index, clause) in (*dimacs).into_iter().enumerate() {
+            // if 3 != clause
+            //     .lits()
+            //     .iter()
+            //     .map(|l| lit_to_index(*l))
+            //     .collect::<HashSet<usize>>()
+            //     .len()
+            // {
+            //     panic!("fail");
+            // }
+
             let watch1 = clause.lits()[0];
             let watch2 = if clause.lits().len() > 1 {
                 clause.lits()[1]
@@ -61,7 +71,13 @@ impl BCPSolver {
     }
 
     fn bcp(&mut self, lit: Lit, level: usize) -> BcpResult {
-        self.implication_graph.insert(lit, Node {level, reason: vec![] });
+        self.implication_graph.insert(
+            lit_to_index(lit),
+            Node {
+                level,
+                reason: vec![],
+            },
+        );
 
         let mut assigned_lits: Vec<Lit> = vec![lit];
 
@@ -81,6 +97,7 @@ impl BCPSolver {
                 match (watched1, watched2) {
                     (Top, _) | (_, Top) => continue,
                     (Bot, Bot) => {
+                        self.learn_clause_from_conflict(clause_index, level);
                         self.unassign(&assigned_lits);
                         return BcpResult::Conflict(clause_index);
                     }
@@ -103,6 +120,7 @@ impl BCPSolver {
                                 let new_unit_lit = watched_clause.watched[other_watch_idx];
 
                                 if self.truth_value_of_literal(new_unit_lit) == Bot {
+                                    self.learn_clause_from_conflict(clause_index, level);
                                     self.unassign(&assigned_lits);
                                     return BcpResult::Conflict(clause_index);
                                 } else if self.truth_value_of_literal(new_unit_lit) == Top {
@@ -114,11 +132,16 @@ impl BCPSolver {
                                     .lits()
                                     .iter()
                                     .filter(|l| **l != new_unit_lit)
-                                    .map(|l| negate(*l))
+                                    .map(|l| lit_to_index(*l))
                                     .collect();
                                 // println!("Reasons: {:?}", &reasons);
-                                self.implication_graph
-                                    .insert(new_unit_lit, Node {level, reason: reasons });
+                                self.implication_graph.insert(
+                                    lit_to_index(new_unit_lit),
+                                    Node {
+                                        level,
+                                        reason: reasons,
+                                    },
+                                );
                                 assigned_lits.push(new_unit_lit);
                             }
                         }
@@ -141,6 +164,7 @@ impl BCPSolver {
     fn unassign(&mut self, lits: &[Lit]) {
         for lit in lits {
             self.assignment[lit_to_index(*lit)] = Unassigned;
+            self.implication_graph.remove(&lit_to_index(*lit));
         }
     }
 
@@ -170,15 +194,22 @@ impl BCPSolver {
     }
 
     fn learn_clause_from_conflict(&mut self, clause_index: usize, level: usize) {
-        let mut fringe = HashSet::new();
-        let mut cut = HashSet::new();
+        let mut fringe = BTreeSet::new();
+        let mut cut = BTreeSet::new();
 
         for lit in self.clauses[clause_index].clause.lits() {
-            fringe.insert(negate(*lit));
+            fringe.insert(lit_to_index(*lit));
+        }
+
+        println!("Clause: {:?}", self.clauses[clause_index].clause.lits());
+
+        for (key, val) in self.implication_graph.iter() {
+            println!("{:?}: {:?}", &key, &val);
         }
 
         while let Some(&current) = fringe.iter().next() {
             fringe.take(&current);
+            println!("\n {:?}, {:?}", &current, self.assignment[current]);
 
             let node = self.implication_graph.get(&current).unwrap();
             //Node is UID or not of the same decision level
@@ -191,11 +222,26 @@ impl BCPSolver {
             }
         }
 
-        let learned_lits = cut.into_iter().map(|l| negate(l)).collect();
+        let learned_lits: Vec<Lit> = cut
+            .into_iter()
+            .map(|index| negate(index_to_lit(index, self.assignment[index])))
+            .collect();
+        // println!("Learned: {:?}", &learned_lits);
+        // println!(
+        //     "Real values: {:?}",
+        //     learned_lits
+        //         .iter()
+        //         .map(|l| self.assignment[lit_to_index(*l)])
+        //         .collect::<Vec<Assignment>>()
+        // );
+        // for (key, val) in self.implication_graph.iter() {
+        //     println!("{:?}: {:?}", &key, &val);
+        // }
+        println!("\n\n\n");
         self.add_watched_clause(learned_lits);
     }
 
-    fn add_watched_clause(&mut self, lits: Vec<Lit>)  {
+    fn add_watched_clause(&mut self, lits: Vec<Lit>) {
         let clause = Clause::from_vec(lits);
         let watch1 = clause.lits()[0];
 
@@ -224,19 +270,17 @@ impl BCPSolver {
         self.watches_for_var[lit_to_index(watch1)].insert(index);
         self.watches_for_var[lit_to_index(watch2)].insert(index);
     }
-    fn cdcl_recursive( &mut self, level: usize) -> SATResult {
+    fn cdcl_recursive(&mut self, level: usize) -> SATResult {
         match self.next_unassigned_lit() {
-            None => {
-                SAT {
-                    model: Model {
-                        assignments: self.assignment.iter().map(|x| x.to_bool()).collect(),
-                    },
-                }
-            }
+            None => SAT {
+                model: Model {
+                    assignments: self.assignment.iter().map(|x| x.to_bool()).collect(),
+                },
+            },
             Some(next_lit) => {
                 for lit in [next_lit, negate(next_lit)] {
                     match self.bcp(lit, level) {
-                        BcpResult::Implications(assigned) => match self.cdcl_recursive(level+1) {
+                        BcpResult::Implications(assigned) => match self.cdcl_recursive(level + 1) {
                             SAT { model } => return SAT { model },
                             UNSAT => self.unassign(&assigned),
                         },
@@ -246,7 +290,7 @@ impl BCPSolver {
                             // }
                             // println!("\n\n {:?}", &self.clauses[clause_index].clause, );
                             // println!("\n\n {:?}", &self.assignment);
-                            self.learn_clause_from_conflict(clause_index,level);
+                            // self.learn_clause_from_conflict(clause_index, level + 1);
                         }
                     }
                 }
@@ -260,5 +304,3 @@ pub fn cdcl_algorithm(num_vars: usize, clauses: &Box<[Clause]>) -> SATResult {
     let mut solver = BCPSolver::from_dimacs(num_vars, clauses);
     solver.cdcl_recursive(0)
 }
-
-

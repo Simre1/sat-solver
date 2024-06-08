@@ -218,13 +218,11 @@ impl DPLLSolver {
     }
     fn dpll_recursive(&mut self) -> SATResult {
         return match self.next_unassigned_lit() {
-            None => {
-                SAT {
-                    model: Model {
-                        assignments: self.assignment.iter().map(|x| x.to_bool()).collect(),
-                    },
-                }
-            }
+            None => SAT {
+                model: Model {
+                    assignments: self.assignment.iter().map(|x| x.to_bool()).collect(),
+                },
+            },
             Some(next_lit) => {
                 for lit in [next_lit, negate(next_lit)] {
                     match self.bcp(lit) {
@@ -245,4 +243,3 @@ pub fn dpll_algorithm(num_vars: usize, clauses: &Box<[Clause]>) -> SATResult {
     let mut solver = DPLLSolver::from_dimacs(num_vars, clauses);
     solver.dpll_recursive()
 }
-

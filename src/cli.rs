@@ -12,7 +12,7 @@ pub struct CLIArgs {
     #[arg(short, long)]
     pub cnf: PathBuf,
 
-    #[arg(short, long, default_value_t = AlgorithmType::Simple)]
+    #[arg(short, long, default_value_t = AlgorithmType::DPLL)]
     /// Algorithm to use
     pub algorithm: AlgorithmType,
 }
@@ -31,7 +31,7 @@ impl Display for AlgorithmType {
 pub enum AlgorithmType {
     Simple,
     DPLL,
-    CDCL
+    CDCL,
 }
 
 impl FromStr for AlgorithmType {
@@ -42,7 +42,9 @@ impl FromStr for AlgorithmType {
             "simple" => Ok(AlgorithmType::Simple),
             "dpll" => Ok(AlgorithmType::DPLL),
             "cdcl" => Ok(AlgorithmType::CDCL),
-            _ => Err("Not recognized".to_string() + s + "\nSupported algorithms: \"simple\", \"dpll\", \"cdcl\""),
+            _ => Err("Not recognized".to_string()
+                + s
+                + "\nSupported algorithms: \"simple\", \"dpll\", \"cdcl\""),
         }
     }
 }
