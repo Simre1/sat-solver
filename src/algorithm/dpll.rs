@@ -68,10 +68,6 @@ impl DPLLSolver {
 
                 match (watched1, watched2) {
                     (Top, _) | (_, Top) => continue,
-                    (Bot, Bot) => {
-                        self.unassign(&assigned_lits);
-                        return None;
-                    }
                     (Bot, _) | (_, Bot) => {
                         let bot_watch_idx = if watched1 == Bot { 0 } else { 1 };
                         let other_watch_idx = 1 - bot_watch_idx;

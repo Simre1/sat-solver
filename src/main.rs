@@ -11,6 +11,7 @@ use crate::algorithm::utility::read_file;
 mod algorithm;
 mod cli;
 mod tests;
+mod delta_debug;
 
 fn main() {
     let args = parse_cli_args();

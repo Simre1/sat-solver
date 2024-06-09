@@ -4,6 +4,7 @@ use crate::algorithm::interface::SATResult::*;
 use crate::algorithm::utility::*;
 use dimacs::{Clause, Lit, Sign};
 use std::collections::{BTreeSet, HashMap, HashSet};
+use crate::delta_debug::clause_to_string;
 
 #[derive(Debug)]
 pub struct Node {
@@ -203,7 +204,7 @@ impl BCPSolver {
             let node = self.implication_graph.get(&current).unwrap();
             //Node is UID or not of the same decision level
             // if node.level != level || node.reason.is_empty() {
-            if node.reason.is_empty() {
+            if  node.reason.is_empty() {
                 cut.insert(current);
             } else {
                 for lit in &node.reason {
@@ -216,11 +217,13 @@ impl BCPSolver {
             .into_iter()
             .map(|index| negate(index_to_lit(index, self.assignment[index])))
             .collect();
-        self.add_watched_clause(learned_lits);
+        let clause = Clause::from_vec(learned_lits);
+        println!("{}",clause_to_string(&clause));
+        self.add_watched_clause(clause);
     }
 
-    fn add_watched_clause(&mut self, lits: Vec<Lit>) {
-        let clause = Clause::from_vec(lits);
+    fn add_watched_clause(&mut self, clause: Clause) {
+
         let watch1 = clause.lits()[0];
 
         let watch2;
