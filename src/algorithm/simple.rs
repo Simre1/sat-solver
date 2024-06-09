@@ -7,15 +7,15 @@ pub fn simple_algorithm(num_vars: usize, clauses: &Box<[Clause]>) -> SATResult {
     let mut assignment = vec![Assignment::Unassigned; num_vars];
     let sat = simple_algorithm_recursion(num_vars, &clauses, &mut assignment, 0);
 
-    if sat {
+    return if sat {
         let bool_assignment = assignment.iter().map(|a| a.to_bool()).collect();
-        return SATResult::SAT {
+        SATResult::SAT {
             model: Model {
                 assignments: bool_assignment,
             },
-        };
+        }
     } else {
-        return SATResult::UNSAT;
+        SATResult::UNSAT
     }
 }
 

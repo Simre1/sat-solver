@@ -1,8 +1,6 @@
 use std::collections::BTreeSet;
 use std::collections::HashSet;
-
 use dimacs::{Clause, Lit, Sign};
-
 use crate::algorithm::interface::Assignment::*;
 use crate::algorithm::interface::SATResult::*;
 use crate::algorithm::utility::*;
@@ -16,6 +14,7 @@ pub struct WatchedClause {
 
 pub struct DPLLSolver {
     clauses: Vec<WatchedClause>,
+    //Clauses in which a lit(usize) is watched
     watches_for_var: Vec<BTreeSet<usize>>,
     assignment: Vec<Assignment>,
 }
@@ -52,14 +51,18 @@ impl DPLLSolver {
     }
 
     fn bcp(&mut self, lit: Lit) -> Option<Vec<Lit>> {
+        //list of found unit lits
         let mut assigned_lits: Vec<Lit> = vec![lit];
 
         let mut iterations = 0;
+
+        //Process every found Unit lit
         while iterations < assigned_lits.len() {
             let current_lit = assigned_lits[iterations];
             let current_lit_idx = lit_to_index(current_lit);
             self.assignment[current_lit_idx] = assignment_from_sign(current_lit.sign());
 
+            //Iterate through all clauses in which current lit is watched
             for clause_index in self.watches_for_var[current_lit_idx].clone() {
                 let watched_clause = &self.clauses[clause_index];
 
@@ -85,12 +88,16 @@ impl DPLLSolver {
                             }
                             None => {
                                 let new_unit_lit = watched_clause.watched[other_watch_idx];
+                                //All lits in clause are false
                                 if self.truth_value_of_literal(new_unit_lit) == Bot {
                                     self.unassign(&assigned_lits);
                                     return None;
-                                } else if self.truth_value_of_literal(new_unit_lit) == Top {
+                                }
+                                //If lit is learned twice in bcp step
+                                else if self.truth_value_of_literal(new_unit_lit) == Top {
                                     continue;
                                 }
+                                //Unit literal detected
                                 assigned_lits.push(watched_clause.watched[other_watch_idx]);
                             }
                         }
@@ -127,13 +134,9 @@ impl DPLLSolver {
 
     fn find_next_watched_literal(&self, clause: &Clause, other_watched: Lit) -> Option<Lit> {
         for lit in clause.lits() {
-            if self.assignment[lit_to_index(*lit)] == Unassigned && *lit != other_watched {
-                return Some(*lit);
-            }
-        }
-
-        for lit in clause.lits() {
-            if self.truth_value_of_literal(*lit) == Top {
+            if (self.assignment[lit_to_index(*lit)] == Unassigned && *lit != other_watched)
+                || self.truth_value_of_literal(*lit) == Top
+            {
                 return Some(*lit);
             }
         }
@@ -162,10 +165,6 @@ impl DPLLSolver {
                 loop {
                     let result = self.bcp(next);
 
-                    // println!(
-                    //     "{:?}, {:?}, {:?}, {:?}",
-                    //     next, &result, &stack, &made_assignments
-                    // );
                     match result {
                         Some(implied_assignments) => {
                             // Current fix to deduplicate bcp output

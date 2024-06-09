@@ -24,6 +24,7 @@ pub enum BcpResult {
 
 struct BCPSolver {
     clauses: Vec<WatchedClause>,
+    //Clauses in which a lit(usize) is watched
     watches_for_var: Vec<BTreeSet<usize>>,
     assignment: Vec<Assignment>,
     implication_graph: HashMap<usize, Node>,
@@ -37,15 +38,6 @@ impl BCPSolver {
         let assignment = vec![Unassigned; num_vars];
 
         for (index, clause) in (*dimacs).into_iter().enumerate() {
-            // if 3 != clause
-            //     .lits()
-            //     .iter()
-            //     .map(|l| lit_to_index(*l))
-            //     .collect::<HashSet<usize>>()
-            //     .len()
-            // {
-            //     panic!("fail");
-            // }
 
             let watch1 = clause.lits()[0];
             let watch2 = if clause.lits().len() > 1 {
@@ -80,24 +72,19 @@ impl BCPSolver {
             },
         );
 
+        //list of found unit lits
         let mut assigned_lits: Vec<Lit> = vec![lit];
 
         let mut iterations = 0;
+        //Process every found unit lit
         while iterations < assigned_lits.len() {
             let current_lit = assigned_lits[iterations];
             let current_lit_idx = lit_to_index(current_lit);
 
             self.assignment[current_lit_idx] = assignment_from_sign(current_lit.sign());
-
+            //Iterate through all clauses in which current lit is watched
             for clause_index in self.watches_for_var[current_lit_idx].clone() {
                 let watched_clause = &self.clauses[clause_index];
-
-                // println!(
-                //     "{:?} {:?} {:?}",
-                //     watched_clause.clause.lits(),
-                //     watched_clause.watched,
-                //     current_lit
-                // );
 
                 let watched1 = self.truth_value_of_literal(watched_clause.watched[0]);
                 let watched2 = self.truth_value_of_literal(watched_clause.watched[1]);
@@ -124,6 +111,7 @@ impl BCPSolver {
                             None => {
                                 let new_unit_lit = watched_clause.watched[other_watch_idx];
 
+                                //All lits in clause are false
                                 if self.truth_value_of_literal(new_unit_lit) == Bot {
                                     let clause =
                                         self.learn_clause_from_conflict(clause_index, level);
@@ -131,7 +119,7 @@ impl BCPSolver {
                                     self.add_watched_clause(clause);
                                     return BcpResult::Conflict;
                                 }
-
+                                //If lit is learned twice in bcp step
                                 let reasons = watched_clause
                                     .clause
                                     .lits()
@@ -147,6 +135,7 @@ impl BCPSolver {
                                         reason: reasons,
                                     },
                                 );
+                                //Unit literal detected
                                 assigned_lits.push(new_unit_lit);
                             }
                         }
