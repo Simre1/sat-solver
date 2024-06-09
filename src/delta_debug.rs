@@ -1,3 +1,4 @@
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -10,7 +11,7 @@ use crate::algorithm::utility::read_file;
 #[test]
 fn reduce_problem(){
     println!("test");
-    let file = fs::read_to_string(Path::new("../test-formulas/long/prime289.in").to_path_buf()).unwrap();
+    let file = fs::read_to_string(Path::new("test-files/test3.cnf").to_path_buf()).unwrap();
     let (num_vars, clauses) = read_file(file.as_str());
     let mut clauses_vec = Vec::from(clauses);
 
@@ -18,41 +19,50 @@ fn reduce_problem(){
 
     let min = delta_debug(clauses_vec.clone(), test_function);
 
-    let num_clauses= clauses_vec.len();
-    let header = format!("p cnf {num_vars} {num_clauses}");
-    let content = std::iter::once(header).chain(clauses_vec.iter().map(|c| clause_to_string(c))).collect::<Vec<String>>().join("\n");
+    save_cnf(&min);
+}
 
-    let mut file = File::create("test-files/test10.cnf").unwrap();
+fn save_cnf(clauses: &Vec<Clause>){
+    // let map = clauses.clone().iter()
+    //     .map(|x| x.lits()).flatten()
+    //     .map(|x|x.var().0).enumerate()
+    //     .collect::<BTreeSet<usize,usize>>();
+
+    let num_vars = clauses.clone().iter().map(|x| x.lits()).flatten().map(|x|x.var().0).max().unwrap();
+    let num_clauses= clauses.len();
+    let header = format!("p cnf {num_vars} {num_clauses}");
+    let content = std::iter::once(header).chain(clauses.iter().map(|c| clause_to_string(c))).collect::<Vec<String>>().join("\n");
+
+    let mut file = File::create("test-files/test11.cnf").unwrap();
     file.write_all(content.as_bytes()).unwrap();
 }
 
-fn delta_debug<T, F>(input: Vec<T>, test: F) -> Vec<T>
+fn delta_debug< F>(input: Vec<Clause>, test: F) -> Vec<Clause>
     where
-        T: Clone,
-        F: Fn(&Vec<T>) -> bool,
+        F: Fn(&Vec<Clause>) -> bool,
 {
     delta_debug_recursive(input, test, 2)
 }
 
-fn delta_debug_recursive<T, F>(input: Vec<T>, test: F, n: usize) -> Vec<T>
+fn delta_debug_recursive<F>(input: Vec<Clause>, test: F, n: usize) -> Vec<Clause>
     where
-        T: Clone,
-        F: Fn(&Vec<T>) -> bool,
+        F: Fn(&Vec<Clause>) -> bool,
 {
     if input.is_empty() || n > input.len() {
         return input;
     }
 
     let chunk_size = (input.len() + n - 1) / n;
-    let mut chunks: Vec<&[T]> = input.chunks(chunk_size).collect();
+    let mut chunks: Vec<&[Clause]> = input.chunks(chunk_size).collect();
     let mut reduced_input = input.clone();
 
     for (i, chunk) in chunks.iter().enumerate() {
-        let complement: Vec<T> = input
+        let complement: Vec<Clause> = input
             .iter()
             .enumerate()
             .filter_map(|(j, item)| if j / chunk_size != i { Some(item.clone()) } else { None })
             .collect();
+        //save_cnf(&complement);
 
         if test(&complement) {
             return delta_debug_recursive(complement, test, 2);
