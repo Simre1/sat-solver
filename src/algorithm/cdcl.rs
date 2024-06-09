@@ -17,7 +17,7 @@ struct WatchedClause {
 }
 
 pub enum BcpResult {
-    Conflict(usize),
+    Conflict,
     Implications(Vec<Lit>),
 }
 
@@ -96,11 +96,6 @@ impl BCPSolver {
 
                 match (watched1, watched2) {
                     (Top, _) | (_, Top) => continue,
-                    (Bot, Bot) => {
-                        self.learn_clause_from_conflict(clause_index, level);
-                        self.unassign(&assigned_lits);
-                        return BcpResult::Conflict(clause_index);
-                    }
                     (Bot, _) | (_, Bot) => {
                         let bot_watch_idx = if watched1 == Bot { 0 } else { 1 };
                         let other_watch_idx = 1 - bot_watch_idx;
@@ -112,9 +107,11 @@ impl BCPSolver {
                         match new_watched_lit {
                             Some(found_lit) => {
                                 let mut_clause_watcher = &mut self.clauses[clause_index];
-                                mut_clause_watcher.watched[bot_watch_idx] = found_lit;
-                                self.watches_for_var[current_lit_idx].remove(&clause_index);
+                                self.watches_for_var
+                                    [lit_to_index(mut_clause_watcher.watched[bot_watch_idx])]
+                                .remove(&clause_index);
                                 self.watches_for_var[lit_to_index(found_lit)].insert(clause_index);
+                                mut_clause_watcher.watched[bot_watch_idx] = found_lit;
                             }
                             None => {
                                 let new_unit_lit = watched_clause.watched[other_watch_idx];
@@ -122,7 +119,7 @@ impl BCPSolver {
                                 if self.truth_value_of_literal(new_unit_lit) == Bot {
                                     self.learn_clause_from_conflict(clause_index, level);
                                     self.unassign(&assigned_lits);
-                                    return BcpResult::Conflict(clause_index);
+                                    return BcpResult::Conflict;
                                 } else if self.truth_value_of_literal(new_unit_lit) == Top {
                                     continue;
                                 }
@@ -134,7 +131,7 @@ impl BCPSolver {
                                     .filter(|l| **l != new_unit_lit)
                                     .map(|l| lit_to_index(*l))
                                     .collect();
-                                // println!("Reasons: {:?}", &reasons);
+
                                 self.implication_graph.insert(
                                     lit_to_index(new_unit_lit),
                                     Node {
@@ -146,7 +143,10 @@ impl BCPSolver {
                             }
                         }
                     }
-                    (_, _) => panic!("Should not happen"),
+                    (_, _) => panic!(
+                        "Should not happen: {:?} {:?}",
+                        watched_clause.watched, current_lit
+                    ),
                 }
             }
             iterations += 1;
@@ -179,13 +179,9 @@ impl BCPSolver {
 
     fn find_next_watched_literal(&self, clause: &Clause, other_watched: Lit) -> Option<Lit> {
         for lit in clause.lits() {
-            if self.assignment[lit_to_index(*lit)] == Unassigned && *lit != other_watched {
-                return Some(*lit);
-            }
-        }
-
-        for lit in clause.lits() {
-            if self.truth_value_of_literal(*lit) == Top {
+            if (self.assignment[lit_to_index(*lit)] == Unassigned && *lit != other_watched)
+                || self.truth_value_of_literal(*lit) == Top
+            {
                 return Some(*lit);
             }
         }
@@ -201,19 +197,13 @@ impl BCPSolver {
             fringe.insert(lit_to_index(*lit));
         }
 
-        println!("Clause: {:?}", self.clauses[clause_index].clause.lits());
-
-        for (key, val) in self.implication_graph.iter() {
-            println!("{:?}: {:?}", &key, &val);
-        }
-
         while let Some(&current) = fringe.iter().next() {
             fringe.take(&current);
-            println!("\n {:?}, {:?}", &current, self.assignment[current]);
 
             let node = self.implication_graph.get(&current).unwrap();
             //Node is UID or not of the same decision level
-            if node.level != level || node.reason.is_empty() {
+            // if node.level != level || node.reason.is_empty() {
+            if node.reason.is_empty() {
                 cut.insert(current);
             } else {
                 for lit in &node.reason {
@@ -226,18 +216,6 @@ impl BCPSolver {
             .into_iter()
             .map(|index| negate(index_to_lit(index, self.assignment[index])))
             .collect();
-        // println!("Learned: {:?}", &learned_lits);
-        // println!(
-        //     "Real values: {:?}",
-        //     learned_lits
-        //         .iter()
-        //         .map(|l| self.assignment[lit_to_index(*l)])
-        //         .collect::<Vec<Assignment>>()
-        // );
-        // for (key, val) in self.implication_graph.iter() {
-        //     println!("{:?}: {:?}", &key, &val);
-        // }
-        println!("\n\n\n");
         self.add_watched_clause(learned_lits);
     }
 
@@ -284,14 +262,7 @@ impl BCPSolver {
                             SAT { model } => return SAT { model },
                             UNSAT => self.unassign(&assigned),
                         },
-                        BcpResult::Conflict(clause_index) => {
-                            // for (key, val) in self.implication_graph.iter() {
-                            //     println!("{:?}: {:?}", &key, &val);
-                            // }
-                            // println!("\n\n {:?}", &self.clauses[clause_index].clause, );
-                            // println!("\n\n {:?}", &self.assignment);
-                            // self.learn_clause_from_conflict(clause_index, level + 1);
-                        }
+                        BcpResult::Conflict => {}
                     }
                 }
                 UNSAT
