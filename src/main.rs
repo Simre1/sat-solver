@@ -2,7 +2,7 @@ use std::fs::read;
 use std::str::from_utf8;
 
 use algorithm::{interface::SATResult, simple::simple_algorithm};
-use cli::{AlgorithmType, parse_cli_args};
+use cli::{parse_cli_args, AlgorithmType};
 
 use crate::algorithm::cdcl::cdcl_algorithm;
 use crate::algorithm::dpll::dpll_algorithm;
@@ -23,8 +23,8 @@ fn main() {
     // Execute solving algorithm
     let sat_result = match args.algorithm {
         AlgorithmType::Simple => simple_algorithm(num_vars, &clauses),
-        AlgorithmType::DPLL => dpll_algorithm(num_vars , &clauses),
-        AlgorithmType::CDCL => cdcl_algorithm(num_vars , &clauses),
+        AlgorithmType::DPLL => dpll_algorithm(num_vars, &clauses),
+        AlgorithmType::CDCL => cdcl_algorithm(num_vars, &clauses),
     };
 
     // Print solving result
@@ -35,10 +35,8 @@ fn main() {
         SATResult::SAT { model } => {
             println!("Formula is SAT");
             for (var, assignment) in model.assignments.iter().enumerate() {
-                println!("{0}: {1}", var, assignment);
+                println!("{0}: {1}", var + 1, assignment);
             }
         }
     }
 }
-
-
