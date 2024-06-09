@@ -15,14 +15,7 @@ mod cli;
 mod tests;
 #[tokio::main]
 async fn main() {
-    let short = Path::new("test-formulas/short").to_path_buf();
-    let long = Path::new("test-formulas/long").to_path_buf();
-
-    let files = vec![
-        get_files_in_dir(short).unwrap(),
-        get_files_in_dir(long).unwrap(),
-    ]
-    .concat();
+    let files = Path::new("test-formulas").to_path_buf();
 
     println!("formula simple dpll cdcl");
 
