@@ -4,7 +4,7 @@ DIR="./test-formulas/bench"
 
 EXE="./target/release/sat-solver"
 
-TIMEOUT=5 # SECONDS
+TIMEOUT=300 # SECONDS
 JOBS=4 # PHYSICAL CORES
 
 rm sat-bench-tasks.txt

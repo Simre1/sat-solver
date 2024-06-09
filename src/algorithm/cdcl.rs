@@ -92,6 +92,13 @@ impl BCPSolver {
             for clause_index in self.watches_for_var[current_lit_idx].clone() {
                 let watched_clause = &self.clauses[clause_index];
 
+                // println!(
+                //     "{:?} {:?} {:?}",
+                //     watched_clause.clause.lits(),
+                //     watched_clause.watched,
+                //     current_lit
+                // );
+
                 let watched1 = self.truth_value_of_literal(watched_clause.watched[0]);
                 let watched2 = self.truth_value_of_literal(watched_clause.watched[1]);
 
@@ -118,11 +125,11 @@ impl BCPSolver {
                                 let new_unit_lit = watched_clause.watched[other_watch_idx];
 
                                 if self.truth_value_of_literal(new_unit_lit) == Bot {
-                                    self.learn_clause_from_conflict(clause_index, level);
+                                    let clause =
+                                        self.learn_clause_from_conflict(clause_index, level);
                                     self.unassign(&assigned_lits);
+                                    self.add_watched_clause(clause);
                                     return BcpResult::Conflict;
-                                } else if self.truth_value_of_literal(new_unit_lit) == Top {
-                                    continue;
                                 }
 
                                 let reasons = watched_clause
@@ -190,7 +197,7 @@ impl BCPSolver {
         return None;
     }
 
-    fn learn_clause_from_conflict(&mut self, clause_index: usize, level: usize) {
+    fn learn_clause_from_conflict(&mut self, clause_index: usize, level: usize) -> Clause {
         let mut fringe = BTreeSet::new();
         let mut cut = BTreeSet::new();
 
@@ -214,15 +221,20 @@ impl BCPSolver {
                 }
             }
         }
-        //if !something_has_been_learnt {return;}
+
+        println!("{:?}", cut);
+
+        // if !something_has_been_learnt {
+        //     return;
+        // }
 
         let learned_lits: Vec<Lit> = cut
             .into_iter()
             .map(|index| negate(index_to_lit(index, self.assignment[index])))
             .collect();
         let clause = Clause::from_vec(learned_lits);
-        // println!("{}",clause_to_string(&clause));
-        self.add_watched_clause(clause);
+
+        return clause;
     }
 
     fn add_watched_clause(&mut self, clause: Clause) {
