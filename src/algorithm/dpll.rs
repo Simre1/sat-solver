@@ -237,5 +237,5 @@ impl DPLLSolver {
 
 pub fn dpll_algorithm(num_vars: usize, clauses: &Box<[Clause]>) -> SATResult {
     let mut solver = DPLLSolver::from_dimacs(num_vars, clauses);
-    solver.dpll_recursive()
+    solver.dpll_iterative()
 }

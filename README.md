@@ -10,10 +10,10 @@ cargo build
  
 ## Running
 
-Run it by providing a CNF file in DIMACS format
+Run it by providing a CNF file in DIMACS format and choose one of the algorithms (simple, dpll, cdcl)
 
 ```bash
-cargo run -- -a simple--cnf test-files/test1.cnf
-cargo run -- -a dpll--cnf test-files/test1.cnf
-cargo run -- -a cdcl--cnf test-files/test1.cnf
+cargo run -- -a simple --cnf test-files/test1.cnf
+cargo run -- -a dpll --cnf test-files/test1.cnf
+cargo run -- -a cdcl --cnf test-files/test1.cnf
 ```
