@@ -2,9 +2,9 @@ use super::interface::*;
 use crate::algorithm::interface::Assignment::*;
 use crate::algorithm::interface::SATResult::*;
 use crate::algorithm::utility::*;
+use crate::delta_debug::clause_to_string;
 use dimacs::{Clause, Lit, Sign};
 use std::collections::{BTreeSet, HashMap, HashSet};
-use crate::delta_debug::clause_to_string;
 
 #[derive(Debug)]
 pub struct Node {
@@ -221,13 +221,18 @@ impl BCPSolver {
             .map(|index| negate(index_to_lit(index, self.assignment[index])))
             .collect();
         let clause = Clause::from_vec(learned_lits);
-        println!("{}",clause_to_string(&clause));
+        // println!("{}",clause_to_string(&clause));
         self.add_watched_clause(clause);
     }
 
     fn add_watched_clause(&mut self, clause: Clause) {
-
-        let watch1 = clause.lits()[0];
+        let watch1;
+        match self.find_next_watched_literal(&clause, Lit::from_i64(999999999)) {
+            Some(other) => {
+                watch1 = other;
+            }
+            None => watch1 = clause.lits()[0],
+        }
 
         let watch2;
 
