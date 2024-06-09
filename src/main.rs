@@ -35,9 +35,14 @@ fn main() {
         }
         SATResult::SAT { model } => {
             println!("Formula is SAT");
-            for (var, assignment) in model.assignments.iter().enumerate() {
-                println!("{0}: {1}", var, assignment);
-            }
+            let res = model.assignments.iter()
+                .enumerate()
+                .map(|(idx, val)| if *val {idx as isize +1} else {-(idx as isize+1)})
+                .map(|lit|lit.to_string())
+                .collect::<Vec<String>>()
+                .join(" ");
+
+            println!("{}", res);
         }
     }
 }

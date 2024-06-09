@@ -62,6 +62,15 @@ mod tests {
         }
     }
 
+    #[test]
+    fn cdcl_test(){
+        let path = Path::new("test-formulas/long/prime289.in").to_path_buf();
+        let content = fs::read_to_string(&path).unwrap();
+        let (num_vars, clauses) = read_file(content.as_str());
+        let dpll_result = cdcl_algorithm(num_vars, &clauses);
+    }
+
+
     fn get_files_in_dir(dir: PathBuf) -> io::Result<Vec<(String, PathBuf)>> {
         let mut file_contents = Vec::new();
 
