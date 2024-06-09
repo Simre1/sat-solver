@@ -13,5 +13,7 @@ cargo build
 Run it by providing a CNF file in DIMACS format
 
 ```bash
-cargo run -- --cnf test-files/test1.cnf
+cargo run -- -a simple--cnf test-files/test1.cnf
+cargo run -- -a dpll--cnf test-files/test1.cnf
+cargo run -- -a cdcl--cnf test-files/test1.cnf
 ```

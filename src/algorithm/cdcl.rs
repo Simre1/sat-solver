@@ -197,6 +197,7 @@ impl BCPSolver {
         for lit in self.clauses[clause_index].clause.lits() {
             fringe.insert(lit_to_index(*lit));
         }
+        let mut something_has_been_learnt = false;
 
         while let Some(&current) = fringe.iter().next() {
             fringe.take(&current);
@@ -204,14 +205,16 @@ impl BCPSolver {
             let node = self.implication_graph.get(&current).unwrap();
             //Node is UID or not of the same decision level
             // if node.level != level || node.reason.is_empty() {
-            if  node.reason.is_empty() {
+            if node.reason.is_empty() {
                 cut.insert(current);
             } else {
                 for lit in &node.reason {
                     fringe.insert(*lit);
+                    something_has_been_learnt = true;
                 }
             }
         }
+        //if !something_has_been_learnt {return;}
 
         let learned_lits: Vec<Lit> = cut
             .into_iter()
